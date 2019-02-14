@@ -17,24 +17,22 @@ class EnsembleVoice:
 
         self.setup_midi(prompt_for_device)
 
-        self.landini_num_users = 0
-        self.landini_user_names = []
-        self.user_note_map = {}
+        self.player_ids = []
+        self.id_note_map = {}
+        self.current_notes = []
 
-        self.address = "127.0.0.1"
-        self.local_port = 50505
-        self.remote_port = 50506
+        self.address = input("Enter current IP: ")
+        self.remote_address = input("Enter conductor patch IP: ")
+        self.local_port = 54320
+        self.remote_port = 54322
 
-        self.osc_client = udp_client.SimpleUDPClient(self.address, self.remote_port)
+        self.osc_client = udp_client.SimpleUDPClient(self.remote_address, self.remote_port)
 
         self.dispatcher = dispatcher.Dispatcher()
-        self.dispatcher.map("/landini/numUsers", self.landini_num_users_handler)
-        self.dispatcher.map("/landini/userNames", self.landini_user_names_handler)
+        self.dispatcher.map("/players", self.players_handler)
         self.dispatcher.set_default_handler(print)
         self.osc_server = osc_server.ThreadingOSCUDPServer((self.address, self.local_port), self.dispatcher)
         threading.Thread(target=self.osc_server.serve_forever).start()
-
-        threading.Thread(target=self.check_for_new_users).start()
 
     def setup_midi(self, prompt_for_device):
         midi_devices = pm_get_input_devices()
@@ -58,65 +56,86 @@ class EnsembleVoice:
         self.midi_server.start()
 
     def on_midi(self, status, note, velocity):
-        current_notes = list(self.user_note_map.values())
+        # self.randomly_assign(note, velocity)
+        self.current_notes.sort()
 
         if velocity > 0:  # Note on
-            if not note in current_notes:
-                open_singers = list(filter(lambda n: self.user_note_map[n] is None, self.user_note_map.keys()))
-                if not open_singers:
-                    return
-                new_singer = random.choice(open_singers)
-                self.user_note_map[new_singer] = note
-                self.send("/freq", note, users=new_singer)
-                self.send("/mute", 0, users=new_singer)
+            if not note in self.current_notes and len(self.current_notes) < 4:
+                self.current_notes.append(note)
+                self.current_notes.sort()
+                self.assign_notes_to_voices()
         else:  # Note off
-            note_singers = list(filter(lambda n: self.user_note_map[n] == note, self.user_note_map.keys()))
-            if not note_singers:
-                return
-            for name in note_singers:
-                self.user_note_map[name] = None
-                self.send("/mute", 1, users=name)
+            self.current_notes.pop(self.current_notes.index(note))
+            self.current_notes.sort()
+            self.assign_notes_to_voices()
 
-    def send(self, address, args, protocol="/send/GD", users="allButMe"):
+    def assign_notes_to_voices(self):
+        for i in range(len(self.current_notes)):
+            singer_id = i + 1
+            if singer_id in self.id_note_map.keys():
+                if self.id_note_map[singer_id] != self.current_notes[i]:
+                    self.id_note_map[singer_id] = None
+                    self.send("/mute", 1, user=singer_id)
+                    self.id_note_map[singer_id] = self.current_notes[i]
+                    self.send("/freq", self.id_note_map[singer_id], user=singer_id)
+                    self.send("/mute", 0, user=singer_id)
+        for singer_id in range(len(self.current_notes) + 1, 5):
+            if singer_id in self.id_note_map.keys():
+                self.id_note_map[singer_id] = None
+                self.send("/mute", 1, user=singer_id)
+
+    def send(self, address, args, user="allButMe"):
         if not isinstance(args, list):
             args = [args]
 
-        self.osc_client.send_message(protocol, [users] + [address] + args)
+        self.osc_client.send_message("/send", [user] + [address] + args)
 
-    def check_for_new_users(self):
-        while True:
-            self.send("/null", [], protocol="/numUsers")
-            time.sleep(0.2)
-
-    def landini_num_users_handler(self, _, *args):
-        if args:
-            if self.landini_num_users == args[0] - 1:
-                return
-
-            self.landini_num_users = args[0] - 1
-            print("Number of LANdini users: %d" % self.landini_num_users)
-            self.send("/null", [], protocol="/userNames")
-
-    def landini_user_names_handler(self, _, *args):
+    def players_handler(self, _, *args):
         if args == ():
             args = []
 
         if not isinstance(args, list):
             args = list(args)
 
-        self.landini_user_names = args
-        if self.landini_user_names:
-            print("LANdini user names:")
-            for name in self.landini_user_names:
-                print("\t%s" % name)
-                if not name in self.user_note_map.keys():
-                    self.user_note_map[name] = None
+        ids = [int(singer_id) for singer_id in args]
+        if -1 in ids:
+            index = ids.index(-1)
+            ids.pop(index)
+        elif 0 in ids:
+            index = ids.index(0)
+            ids.pop(index)
 
-        old_names = list(self.user_note_map.keys())
-        for name in old_names:
-            if not name in self.landini_user_names:
-                self.user_note_map.pop(name, None)
+        self.player_ids = ids
+        if self.player_ids:
+            for singer_id in self.player_ids:
+                if not singer_id in self.id_note_map.keys():
+                    self.id_note_map[singer_id] = None
+
+        old_ids = list(self.id_note_map.keys())
+        for singer_id in old_ids:
+            if not singer_id in self.player_ids:
+                self.id_note_map.pop(singer_id, None)
+
+    def randomly_assign(self, note, velocity):
+        current_notes = list(self.id_note_map.values())
+
+        if velocity > 0:  # Note on
+            if not note in current_notes:
+                open_singers = list(filter(lambda singer_id: self.id_note_map[singer_id] is None, self.id_note_map.keys()))
+                if not open_singers:
+                    return
+                new_singer = random.choice(open_singers)
+                self.id_note_map[new_singer] = note
+                self.send("/freq", note, user=new_singer)
+                self.send("/mute", 0, user=new_singer)
+        else:  # Note off
+            note_singers = list(filter(lambda n: self.id_note_map[n] == note, self.id_note_map.keys()))
+            if not note_singers:
+                return
+            for singer_id in note_singers:
+                self.id_note_map[singer_id] = None
+                self.send("/mute", 1, user=singer_id)
 
 
 if __name__ == "__main__":
-    e = EnsembleVoice()
+    e = EnsembleVoice(prompt_for_device=False)
