@@ -1,8 +1,4 @@
 from pyo import *
-from pythonosc import udp_client, dispatcher, osc_server
-import threading
-import time
-from utils import normalize_from_range
 from pretty_midi import note_number_to_hz
 import random
 
@@ -47,19 +43,6 @@ class EnsembleVoice:
         self.current_notes = []
 
         self.voice_notes = [None, None, None, None]
-
-        # self.address = input("Enter current IP: ")
-        # self.remote_address = input("Enter conductor patch IP: ")
-        # self.local_port = 54320
-        # self.remote_port = 54322
-        #
-        # self.osc_client = udp_client.SimpleUDPClient(self.remote_address, self.remote_port)
-        #
-        # self.dispatcher = dispatcher.Dispatcher()
-        # self.dispatcher.map("/players", self.players_handler)
-        # self.dispatcher.set_default_handler(print)
-        # self.osc_server = osc_server.ThreadingOSCUDPServer((self.address, self.local_port), self.dispatcher)
-        # threading.Thread(target=self.osc_server.serve_forever).start()
 
     def setup_audio(self):
         pa_list_devices()
