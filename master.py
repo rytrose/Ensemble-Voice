@@ -60,8 +60,10 @@ class EnsembleVoice:
         self.polyrhythm_voice_1 = Input(1)
         self.voice_0_thresh = Thresh(self.polyrhythm_voice_0, threshold=0.2)
         self.voice_1_thresh = Thresh(self.polyrhythm_voice_1, threshold=0.2)
-        self.voice_0_func = TrigFunc(self.voice_0_thresh, self.polyrhythm_trigger, arg=2)
-        self.voice_1_func = TrigFunc(self.voice_1_thresh, self.polyrhythm_trigger, arg=3)
+        self.voice_0_func = TrigFunc(
+            self.voice_0_thresh, self.polyrhythm_trigger, arg=2)
+        self.voice_1_func = TrigFunc(
+            self.voice_1_thresh, self.polyrhythm_trigger, arg=3)
         self.triggered_dur = 0.15
 
     def setup_midi(self, prompt_for_device):
@@ -81,9 +83,11 @@ class EnsembleVoice:
         elif self.midi_device_name == "":
             print("Listening to all available MIDI devices.")
         else:
-            print("Could not find device '%s', listening to all available MIDI devices." % self.midi_device_name)
+            print("Could not find device '%s', listening to all available MIDI devices." %
+                  self.midi_device_name)
 
-        self.midi_server = MidiListener(self.on_midi, mididev=self.midi_device_id)
+        self.midi_server = MidiListener(
+            self.on_midi, mididev=self.midi_device_id)
         self.midi_server.start()
 
     def setup_dual_midi(self):
@@ -93,7 +97,8 @@ class EnsembleVoice:
         self.midi_device_1 = int(input("Enter second device id: "))
         self.midi_device_ids = [self.midi_device_0, self.midi_device_1]
 
-        self.midi_server = MidiListener(self.on_dual_midi, mididev=self.midi_device_ids, reportdevice=True)
+        self.midi_server = MidiListener(
+            self.on_dual_midi, mididev=self.midi_device_ids, reportdevice=True)
         self.midi_server.start()
 
     def on_dual_midi(self, status, note, velocity, device_id):
@@ -101,10 +106,12 @@ class EnsembleVoice:
             return
 
         if (status == 144 and velocity == 0) or status == 128:  # Note Off
-            self.assign_notes(self.midi_device_ids.index(device_id), note, False)
+            self.assign_notes(
+                self.midi_device_ids.index(device_id), note, False)
 
         else:  # Note On
-            self.assign_notes(self.midi_device_ids.index(device_id), note, True)
+            self.assign_notes(
+                self.midi_device_ids.index(device_id), note, True)
 
     def assign_notes(self, id, note, on_or_off):
         note_0_ind = 2 * id
@@ -133,18 +140,25 @@ class EnsembleVoice:
             elif note_1 == note:
                 self.voice_notes[note_1_ind] = note_0
 
-        for i, note in zip([note_0_ind, note_1_ind], [self.voice_notes[note_0_ind], self.voice_notes[note_1_ind]]):
+        for i, note in enumerate(self.voice_notes):
             if note:
                 self.synths[i].freq = note_number_to_hz(note)
-                if note_0_ind == 0:
-                    self.synths[i].play()
-                else:
-                    self.play_poly = True
+                self.synths[i].play()
             else:
-                if note_0_ind == 0:
-                   self.synths[i].stop()
-                else:
-                    self.play_poly = False
+                self.synths[i].stop()
+
+        # for i, note in zip([note_0_ind, note_1_ind], [self.voice_notes[note_0_ind], self.voice_notes[note_1_ind]]):
+        #     if note:
+        #         self.synths[i].freq = note_number_to_hz(note)
+        #         if note_0_ind == 0:
+        #             self.synths[i].play()
+        #         else:
+        #             self.play_poly = True
+        #     else:
+        #         if note_0_ind == 0:
+        #            self.synths[i].stop()
+        #         else:
+        #             self.play_poly = False
 
     def polyrhythm_trigger(self, voice_id):
         if self.play_poly:
@@ -154,9 +168,11 @@ class EnsembleVoice:
                 self.synths[voice_id].stop()
 
             if voice_id % 2 == 0:
-                self.stopping_0 = CallAfter(stop, time=self.triggered_dur, arg=voice_id)
+                self.stopping_0 = CallAfter(
+                    stop, time=self.triggered_dur, arg=voice_id)
             else:
-               self.stopping_1 = CallAfter(stop, time=self.triggered_dur, arg=voice_id)
+                self.stopping_1 = CallAfter(
+                    stop, time=self.triggered_dur, arg=voice_id)
 
     def on_midi(self, status, note, velocity):
         # self.randomly_assign(note, velocity)
@@ -165,7 +181,8 @@ class EnsembleVoice:
     def voice_assignment(self, note, velocity):
         self.current_notes.sort()
 
-        if 0 < velocity < 127:  # Note on | or (velocity == 127 and (note not in self.current_notes))
+        # Note on | or (velocity == 127 and (note not in self.current_notes))
+        if 0 < velocity < 127:
             if not note in self.current_notes and len(self.current_notes) < 4:
                 self.current_notes.append(note)
                 self.current_notes.sort()
@@ -183,7 +200,8 @@ class EnsembleVoice:
                     self.id_note_map[singer_id] = None
                     self.synths[singer_id - 1].stop()
                     self.id_note_map[singer_id] = self.current_notes[i]
-                    self.synths[singer_id - 1].freq = note_number_to_hz(self.id_note_map[singer_id])
+                    self.synths[singer_id -
+                                1].freq = note_number_to_hz(self.id_note_map[singer_id])
                     self.synths[singer_id - 1].play()
         for singer_id in range(len(self.current_notes) + 1, 5):
             if singer_id in self.id_note_map.keys():
@@ -236,7 +254,8 @@ class EnsembleVoice:
                 self.send("/freq", note, user=new_singer)
                 self.send("/mute", 0, user=new_singer)
         else:  # Note off
-            note_singers = list(filter(lambda n: self.id_note_map[n] == note, self.id_note_map.keys()))
+            note_singers = list(
+                filter(lambda n: self.id_note_map[n] == note, self.id_note_map.keys()))
             if not note_singers:
                 return
             for singer_id in note_singers:
